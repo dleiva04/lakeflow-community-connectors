@@ -16,8 +16,7 @@ from typing import (
 )
 import json
 
-from bson import ObjectId
-from bson.json_util import RELAXED_JSON_OPTIONS, dumps
+from bson import ObjectId, json_util
 from pymongo import ASCENDING, MongoClient
 from pyspark.sql import Row
 from pyspark.sql.datasource import (
@@ -599,10 +598,6 @@ def register_lakeflow_source(spark):
     # src/databricks/labs/community_connector/sources/mongodb/mongodb.py
     ########################################################
 
-    _JSON_OPTIONS = RELAXED_JSON_OPTIONS
-
-    # MongoDB stores internal collections under the ``system.*`` prefix; they
-    # are not user data and must not be surfaced as ingestible tables.
     _SYSTEM_COLLECTION_PREFIX = "system."
 
     # Connection timeouts (milliseconds). Always bounded so a misconfigured
@@ -875,9 +870,12 @@ def register_lakeflow_source(spark):
             """
             if _ID_FIELD not in document:
                 raise ValueError("Encountered a document without an '_id' field")
+            # ``JSONOptions`` instances are not picklable, so the Relaxed options are
+            # reached through the module at call time rather than bound to a
+            # module-level constant that Spark would serialise with the connector.
             record = {
                 _ID_FIELD: str(document[_ID_FIELD]),
-                "document_json": dumps(document, json_options=_JSON_OPTIONS),
+                "document_json": json_util.dumps(document, json_options=json_util.RELAXED_JSON_OPTIONS),
             }
             if cursor and cursor[0] != _ID_FIELD:
                 cursor_field, cursor_type = cursor
