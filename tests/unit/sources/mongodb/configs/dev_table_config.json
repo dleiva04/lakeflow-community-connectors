@@ -1,0 +1,7 @@
+{
+  "users": {
+    "cursor_field": "_id",
+    "cursor_type": "objectid",
+    "max_records_per_batch": "100"
+  }
+}

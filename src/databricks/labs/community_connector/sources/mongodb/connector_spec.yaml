@@ -1,0 +1,22 @@
+# MongoDB Community Connector Spec
+display_name: MongoDB
+
+connection:
+  parameters:
+    - name: connection_uri
+      type: string
+      required: true
+      secret: true
+      description: >
+        MongoDB connection string used to connect to the cluster, e.g.
+        mongodb+srv://user:password@cluster.mongodb.net. For MongoDB Atlas
+        use the SRV connection string from the Atlas UI. Because it can
+        embed credentials it is treated as a secret.
+
+    - name: database
+      type: string
+      required: true
+      description: >
+        Name of the MongoDB database to read collections from.
+
+external_options_allowlist: "batch_size,cursor_field,cursor_type,max_records_per_batch,start_timestamp"
