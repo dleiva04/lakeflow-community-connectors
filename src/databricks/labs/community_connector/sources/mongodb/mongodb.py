@@ -3,9 +3,10 @@
 Each document is emitted through a stable envelope schema:
 
 - ``_id``: the document identifier rendered as a stable string.
-- ``document_json``: the full document serialised as MongoDB Extended
-  JSON (Relaxed mode), which preserves BSON types such as ObjectId,
-  Decimal128, dates and binary data.
+- ``document``: the full document stored as VARIANT. MongoDB arrays and
+  nested objects remain queryable as arrays and objects, while BSON types
+  such as ObjectId, Decimal128, dates and binary data use MongoDB Extended
+  JSON (Relaxed mode) representations.
 
 This keeps the Spark schema stable regardless of how heterogeneous the
 documents in a collection are, which is the common case in MongoDB.
@@ -23,6 +24,7 @@ Two ingestion modes are supported, selected per collection:
 Deletes are not tracked in this version.
 """
 
+import json
 from datetime import datetime, timezone
 from typing import Iterator, Optional
 
@@ -33,6 +35,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
     TimestampType,
+    VariantType,
 )
 
 from databricks.labs.community_connector.interface.lakeflow_connect import LakeflowConnect
@@ -118,14 +121,14 @@ class MongoDBLakeflowConnect(LakeflowConnect):
     def get_table_schema(self, table_name: str, table_options: dict[str, str]) -> StructType:
         """Return the envelope schema, plus a cursor column in CDC mode.
 
-        Snapshot tables expose ``_id`` + ``document_json``. CDC tables add
+        Snapshot tables expose ``_id`` + ``document``. CDC tables add
         a typed column named after ``cursor_field`` (unless the cursor is
         ``_id`` itself, which already exists as a column).
         """
         self._validate_table(table_name)
         fields = [
             StructField(_ID_FIELD, StringType(), False),
-            StructField("document_json", StringType(), False),
+            StructField("document", VariantType(), False),
         ]
         cursor = self._resolve_cursor(table_options)
         if cursor and cursor[0] != _ID_FIELD:
@@ -311,12 +314,17 @@ class MongoDBLakeflowConnect(LakeflowConnect):
         """
         if _ID_FIELD not in document:
             raise ValueError("Encountered a document without an '_id' field")
+        # Convert BSON to JSON-compatible Python values before handing the document
+        # to Spark's VariantType converter. Arrays and nested objects remain native
+        # containers; BSON-only scalar types use Extended JSON representations.
         # ``JSONOptions`` instances are not picklable, so the Relaxed options are
-        # reached through the module at call time rather than bound to a
-        # module-level constant that Spark would serialise with the connector.
+        # reached through the module at call time rather than bound to a constant.
+        document_variant = json.loads(
+            json_util.dumps(document, json_options=json_util.RELAXED_JSON_OPTIONS)
+        )
         record = {
             _ID_FIELD: str(document[_ID_FIELD]),
-            "document_json": json_util.dumps(document, json_options=json_util.RELAXED_JSON_OPTIONS),
+            "document": document_variant,
         }
         if cursor and cursor[0] != _ID_FIELD:
             cursor_field, cursor_type = cursor

@@ -7,8 +7,8 @@ The Lakeflow MongoDB Connector extracts data from MongoDB (including MongoDB Atl
 ## Features
 
 - **Automatic collection discovery**: Every user collection in the configured database is exposed as an ingestible table.
-- **Schema-stable envelope**: Each document is emitted as `_id` and `document_json`, so heterogeneous collections keep a stable Spark schema.
-- **BSON preservation**: Documents are serialised as MongoDB Extended JSON (Relaxed mode), preserving BSON types such as `ObjectId`, `Decimal128`, dates and binary data.
+- **Schema-stable envelope**: Each document is emitted as `_id` and a VARIANT `document`, so heterogeneous collections keep a stable Spark schema.
+- **Nested data preservation**: MongoDB arrays and nested objects remain queryable inside `document`. BSON-only types such as `ObjectId`, `Decimal128`, dates and binary data use MongoDB Extended JSON (Relaxed mode) representations.
 - **Snapshot or incremental (CDC)**: Choose per collection. Snapshot is the default; setting `cursor_field` switches a collection to incremental reads.
 - **Atlas ready**: Uses the official PyMongo driver with SRV connection strings.
 
@@ -70,13 +70,15 @@ Each collection produces rows with the following schema:
 | Column           | Type                | Description                                                                                                                                                              |
 | ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `_id`            | string              | The document's `_id` rendered as a stable string.                                                                                                                        |
-| `document_json`  | string              | The full document as MongoDB Extended JSON (Relaxed mode).                                                                                                               |
+| `document`       | variant             | The full document as VARIANT. Arrays and nested objects remain native; BSON-only scalar types use MongoDB Extended JSON representations.                                |
 | `<cursor_field>` | timestamp or string | CDC only: the cursor field surfaced as its own typed column (`timestamp` for `cursor_type=timestamp`, `string` for `objectid`). Omitted when the cursor is `_id` itself. |
 
 
 The primary key is always `_id`.
 
-To work with individual document fields downstream, parse `document_json` in Databricks (for example with `from_json` / `parse_json` / `:` accessors).
+Access individual fields with VARIANT path expressions, for example
+`document:name` or `document:tags`. Traverse array fields with VARIANT
+functions such as `variant_explode`.
 
 ## Ingestion Modes
 
@@ -105,5 +107,6 @@ Requirements and behaviour:
 
 - No delete tracking (no `cdc_with_deletes` / change streams yet).
 - Snapshot mode reads the full collection on every trigger.
-- Nested fields are not flattened into columns; they remain inside `document_json`.
+- Nested fields are not flattened into columns; they remain inside the `document` VARIANT.
+- The connector requires a Databricks Runtime with Spark `VariantType` support.
 

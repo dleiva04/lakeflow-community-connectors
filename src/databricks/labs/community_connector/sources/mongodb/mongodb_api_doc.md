@@ -56,14 +56,16 @@ The read path is selected per collection by the presence of the
 
 ## Schema and BSON handling
 
-- Envelope schema: `_id STRING`, `document_json STRING`. In CDC mode a
+- Envelope schema: `_id STRING`, `document VARIANT`. In CDC mode a
   third column named after `cursor_field` is added (`TIMESTAMP` for
   `cursor_type=timestamp`, `STRING` for `objectid`), unless the cursor is
   `_id` (already present as a column).
 - `_id` is rendered with `str()` — for `ObjectId` this yields the 24-char
   hex string.
-- The full document is serialised with `bson.json_util.dumps` using
-  Relaxed Extended JSON, which round-trips BSON types:
+- The full document is converted to JSON-compatible Python containers and
+  stored as VARIANT. MongoDB arrays and nested documents therefore remain
+  queryable arrays and objects. BSON-only scalar values use Relaxed Extended
+  JSON representations:
   - `ObjectId` -> `{"$oid": "..."}`
   - `Decimal128` -> `{"$numberDecimal": "..."}`
   - dates -> `{"$date": "..."}`
@@ -76,6 +78,7 @@ The read path is selected per collection by the presence of the
 - CDC requires a monotonic cursor field with a matching index; the
   `cursor_type` must match the stored BSON type.
 - No delete tracking (no `cdc_with_deletes` / change streams yet).
-- No nested-field flattening; nested data stays inside `document_json`.
+- No nested-field flattening; nested data stays inside the `document` VARIANT.
+- Requires a Databricks Runtime with Spark `VariantType` support.
 - No server-side projection; snapshot scans the entire collection.
 - Documents lacking the cursor field are not ingested in CDC mode.
